@@ -6,5 +6,5 @@ class SavedValuesConstants:
 
     class LoaderDialog:
         SETTING_NAME = "Load dialog"
-        ORIGINAL_IMAGE_PATH = "original image path"
-        ORGINAL_VIDEO_PATH = "original video path"
+        LOAD_PATH = "load path"
+        SAVE_PATH = "save path"

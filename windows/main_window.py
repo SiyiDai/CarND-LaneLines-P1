@@ -7,9 +7,16 @@ import numpy as np
 from PIL import Image
 
 from ui_py.ui_mainwindow import Ui_MainWindow
-from dialogs.open_load_dialog import OpenLoadDialog
-from dialogs.saved_values_paths import SavedValuesConstants
+from utils.saved_values_paths import SavedValuesConstants
 
+from utils.saved_values_paths import SavedValuesConstants
+from utils.settings_loader_and_saver import SettingsLoaderAndSaver
+from utils.saving_dialogs_helper_functions import (
+    load_value_and_initialize_field,
+    start_file_dialog,
+    start_folder_dialog
+)
+import os
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -20,7 +27,7 @@ class MainWindow(QMainWindow):
         self.ui.setupUi(self)
 
         # register event handlers
-        # self.ui.radioButton_camera.toggled.connect(self.__refresh_ui)
+        self.ui.mode_selection_comboBox.currentTextChanged.connect(self.__refresh_ui)
         # self.ui.radioButton_image.toggled.connect(self.__refresh_ui)
         # self.ui.radioButton_video.toggled.connect(self.__refresh_ui)
         # self.ui.actionLoader.triggered.connect(self.on_action_loader_triggered)
@@ -29,30 +36,69 @@ class MainWindow(QMainWindow):
         self.original_image_path = None
         self.original_video_path = None
 
-    def on_action_loader_triggered(self):
-        dialog = OpenLoadDialog()
-        if not dialog.exec_():
-            return
+        self.settings_loader = SettingsLoaderAndSaver(SavedValuesConstants.LoaderDialog.SETTING_NAME)
 
-        self.original_image_path = dialog.original_image_file_path()
-        self.original_video_path = dialog.original_video_file_path()
+        self.__initialize_fields_and_values()
 
-        self.__refresh_ui()
+    def __initialize_fields_and_values(self):
+        load_value_and_initialize_field(
+            self.settings_loader.read(SavedValuesConstants.LoaderDialog.LOAD_PATH),
+            self.ui.load_path_lineEdit,
+            self.ui.load_path_pushButton.pressed,
+            self.on_select_load_path_button_down,
+        )
+        load_value_and_initialize_field(
+            self.settings_loader.read(SavedValuesConstants.LoaderDialog.SAVE_PATH),
+            self.ui.save_path_lineEdit,
+            self.ui.save_path_pushButton.pressed,
+            self.on_select_save_path_button_down,
+        )
+
+    def on_select_load_path_button_down(self):
+        start_file_dialog(
+            self,
+            "Open any files",
+            "/home",
+            self.load_file_path(),
+            "Image Files (*.png *.jpg *.bmp);; Video files (*.mp4 *.mwv *.mov)",
+            self.ui.load_path_lineEdit,
+        )
+        self.set_default_save_file_path(self.load_file_path())
+        self.save_values(path=SavedValuesConstants.LoaderDialog.LOAD_PATH, value= self.load_file_path())
+
+    def on_select_save_path_button_down(self):
+        start_folder_dialog(
+            self,
+            "Create/choose any folder",
+            "/home",
+            self.save_file_path(),
+            self.ui.save_path_lineEdit,
+        )
+        self.save_values(path=SavedValuesConstants.LoaderDialog.SAVE_PATH, value=self.save_file_path())
+
+    def load_file_path(self):
+        return self.ui.load_path_lineEdit.text()
+
+    def save_file_path(self):
+        return self.ui.save_path_lineEdit.text()
+
+    def set_default_save_file_path(self, path):
+        self.ui.save_path_lineEdit.setText(os.path.dirname(path))
+
+    def save_values(self, path, value):
+        self.settings_loader.write(path, value)
 
     def show_detection_result(self):
         detection_img = self.__convert_rgb_to_bgr(self.detection_image_path)
         detection_img = Image.fromarray(detection_img)
 
         # check which radiobutton has been selected
-        if self.ui.radioButton_image.isChecked():
-            self.ui.pushButton_pause.setEnabled(False)
-            self.on_image_button_is_checked(detection_img)
-        if self.ui.radioButton_video.isChecked():
-            self.ui.pushButton_pause.setEnabled(True)
-            self.on_video_button_is_checked(detection_img)
-        if self.ui.radioButton_camera.isChecked():
-            self.ui.pushButton_pause.setEnabled(False)
-            self.on_camera_button_is_checked(detection_img)
+        if self.ui.mode_selection_comboBox.currentText() == "Image":
+            print("111")
+        if self.ui.mode_selection_comboBox.currentText() == "Video":
+            print("222")
+        if self.ui.mode_selection_comboBox.currentText() == "Webcam":
+            print("333")
 
     def on_image_button_is_checked(self, detection_img):
         pass
