@@ -10,9 +10,6 @@ from ui_py.ui_mainwindow import Ui_MainWindow
 from dialogs.open_load_dialog import OpenLoadDialog
 from dialogs.saved_values_paths import SavedValuesConstants
 
-detectionD_FILE_NAME = "savedImage.jpg"
-COLOR_RANGE = 20
-
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -23,11 +20,11 @@ class MainWindow(QMainWindow):
         self.ui.setupUi(self)
 
         # register event handlers
-        self.ui.radioButton_camera.toggled.connect(self.__refresh_ui)
-        self.ui.radioButton_image.toggled.connect(self.__refresh_ui)
-        self.ui.radioButton_video.toggled.connect(self.__refresh_ui)
-        self.ui.actionLoader.triggered.connect(self.on_action_loader_triggered)
-        self.ui.pushButton_start.pressed.connect(self.show_detection_result)
+        # self.ui.radioButton_camera.toggled.connect(self.__refresh_ui)
+        # self.ui.radioButton_image.toggled.connect(self.__refresh_ui)
+        # self.ui.radioButton_video.toggled.connect(self.__refresh_ui)
+        # self.ui.actionLoader.triggered.connect(self.on_action_loader_triggered)
+        # self.ui.pushButton_start.pressed.connect(self.show_detection_result)
 
         self.original_image_path = None
         self.original_video_path = None
