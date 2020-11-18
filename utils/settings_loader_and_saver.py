@@ -1,4 +1,4 @@
-from dialogs.saved_values_paths import SavedValuesConstants
+from utils.saved_values_paths import SavedValuesConstants
 from PyQt5.QtCore import QSettings
 
 SPECIAL_SAVER_SEPARATOR = " - "
