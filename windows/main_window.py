@@ -28,16 +28,10 @@ class MainWindow(QMainWindow):
 
         # register event handlers
         self.ui.mode_selection_comboBox.currentTextChanged.connect(self.__refresh_ui)
-        # self.ui.radioButton_image.toggled.connect(self.__refresh_ui)
-        # self.ui.radioButton_video.toggled.connect(self.__refresh_ui)
-        # self.ui.actionLoader.triggered.connect(self.on_action_loader_triggered)
-        # self.ui.pushButton_start.pressed.connect(self.show_detection_result)
+        self.ui.load_path_lineEdit.textChanged.connect(self.__refresh_ui)
 
-        self.original_image_path = None
-        self.original_video_path = None
-
+        # initialize load and save dialogs
         self.settings_loader = SettingsLoaderAndSaver(SavedValuesConstants.LoaderDialog.SETTING_NAME)
-
         self.__initialize_fields_and_values()
 
     def __initialize_fields_and_values(self):
@@ -88,25 +82,14 @@ class MainWindow(QMainWindow):
     def save_values(self, path, value):
         self.settings_loader.write(path, value)
 
-    def show_detection_result(self):
-        detection_img = self.__convert_rgb_to_bgr(self.detection_image_path)
-        detection_img = Image.fromarray(detection_img)
-
-        # check which radiobutton has been selected
-        if self.ui.mode_selection_comboBox.currentText() == "Image":
-            print("111")
-        if self.ui.mode_selection_comboBox.currentText() == "Video":
-            print("222")
-        if self.ui.mode_selection_comboBox.currentText() == "Webcam":
-            print("333")
-
-    def on_image_button_is_checked(self, detection_img):
-        pass
+    def on_image_button_is_checked(self, path):
+        self.__refresh_original_image(path)
         # self.detection_frame = self.show_result_image(self.original_image_path, detection_img)
         # self.__refresh_detection_result(self.detection_frame)
 
-    def on_video_button_is_checked(self, detection_img):
+    def on_video_button_is_checked(self, path):
         pass
+        # self.__refresh_original_video(path)
         # self.cap = cv2.VideoCapture(self.original_video_path)
         # self.detection_img = detection_img
         # self.timer_video = QTimer(self)
@@ -200,28 +183,14 @@ class MainWindow(QMainWindow):
         #     pass
         # return frame
 
-    def set_mask(self, frame):
-        lower = self.post_it_color_rgb_value - COLOR_RANGE
-        upper = self.post_it_color_rgb_value + COLOR_RANGE
-        return cv2.inRange(frame, lowerb=lower, upperb=upper)
-
-    def find_contours(self, frame):
-        mask = self.set_mask(frame)
-        return cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
-    @staticmethod
-    def __convert_rgb_to_bgr(rgb_img_path):
-        # open image with Image.open to avoid error from opencv
-        # convert rgb image to bgr for opencv
-        rgb_img = np.array(Image.open(rgb_img_path).convert("RGB"))
-        return cv2.cvtColor(rgb_img, cv2.COLOR_RGB2BGR)
-
-    @staticmethod
-    def __convert_bgr_to_rgb(bgr_img):
-        return cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
-
     def __refresh_ui(self):
-        self.__refresh_original_image(self.original_image_path)
+        if self.ui.mode_selection_comboBox.currentText() == "Image":
+            self.on_image_button_is_checked(self.load_file_path())
+        if self.ui.mode_selection_comboBox.currentText() == "Video":
+            self.on_video_button_is_checked(self.load_file_path())
+        if self.ui.mode_selection_comboBox.currentText() == "Webcam":
+            # self.on_camera_button_is_checked()
+            pass
 
     def __refresh_original_image(self, original_image_path):
         pix_map = QPixmap(original_image_path)
