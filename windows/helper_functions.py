@@ -5,12 +5,12 @@ import matplotlib.image as mpimg
 import numpy as np
 import cv2
 
+import math
 
 def grayscale(img):
     """Applies the Grayscale transform
     This will return an image with only one color channel
     but NOTE: to see the returned image as grayscale
-    (assuming your grayscaled image is called 'gray')
     you should call plt.imshow(gray, cmap='gray')"""
     return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     # Or use BGR2GRAY if you read an image with cv2.imread()
@@ -30,7 +30,6 @@ def region_of_interest(img, vertices):
     
     Only keeps the region of the image defined by the polygon
     formed from `vertices`. The rest of the image is set to black.
-    `vertices` should be a numpy array of integer points.
     """
     #defining a blank mask to start with
     mask = np.zeros_like(img)   
@@ -48,15 +47,9 @@ def region_of_interest(img, vertices):
     #returning the image only where mask pixels are nonzero
     masked_image = cv2.bitwise_and(img, mask)
     return masked_image
-    
-def clear_globals():
-    global all_left_x1s, all_left_x2s, all_right_x1s, all_right_x2s
-    all_left_x1s = []
-    all_left_x2s = []
-    all_right_x1s = []
-    all_right_x2s = []
 
-def draw_lines(img, lines, color=[255, 0, 0], thickness=2):
+
+def draw_lines(img, lines, color=[255, 0, 0], thickness=2, extrapolate=True):
     """
     NOTE: this is the function you might want to use as a starting point once you want to 
     average/extrapolate the line segments you detect to map out the full
@@ -73,11 +66,56 @@ def draw_lines(img, lines, color=[255, 0, 0], thickness=2):
     If you want to make the lines semi-transparent, think about combining
     this function with the weighted_img() function below
     """
+    
+    # The code below selects lines from the left and right lanes and 
+    # allowing onli line angles between 25 and 40 deg (i.e. rejects spurious lines)
+    # extrapolates (i.e. calculates) the weigthed average for each side using 
+    # the length of each detected line as the weight
+    # It also keeps track of the furthest point seen for each side (rX and lX)
+    
+    rx_max = np.uint32(img.shape[1] * 0.49)
+    lx_max = np.uint32(img.shape[1] * 0.51)
+    full_x = img.shape[1] - 1
+    rA, rB, rW, rX = (0,0,0.,full_x)
+    lA, lB, lW, lX = (0,0,0.,0)
+    min_angle = 25.
+    max_angle = 40.
+    
     for line in lines:
-        for x1,y1,x2,y2 in line:
-            cv2.line(img, (x1, y1), (x2, y2), color, thickness)
+        for x1,y1,x2,y2 in line:            
+            # right lane
+            if  ( (((y2-y1)/(x2-x1)) > np.tan( min_angle*np.pi/180)) &    \
+                  (((y2-y1)/(x2-x1)) < np.tan( max_angle*np.pi/180)) &    \
+                  (x1 >= rx_max) & (x2 >= rx_max) ):
+                if extrapolate:
+                    W = np.linalg.norm(np.array((x2,y2))-np.array((x1,y1)))
+                    fitW = np.polyfit((x1,x2), (y1,y2), 1) * W
+                    rA,rB = (rA,rB) + fitW
+                    rW = rW + W
+                    rX = min(rX,x1,x2)
+                else:
+                    cv2.line(img, (x1, y1), (x2, y2), color, thickness)
+                    
+            # left lane
+            elif ((((y2-y1)/(x2-x1)) < np.tan(-min_angle*np.pi/180)) &    \
+                  (((y2-y1)/(x2-x1)) > np.tan(-max_angle*np.pi/180)) &    \
+                  (x1 <= lx_max) & (x2 <= lx_max) ):
+                if extrapolate:
+                    W = np.linalg.norm(np.array((x2,y2))-np.array((x1,y1)))
+                    fitW = np.polyfit((x1,x2), (y1,y2), 1) * W
+                    lA,lB = (lA,lB) + fitW
+                    lW = lW + W
+                    lX = max(lX, x1,x2)
+                else:
+                    cv2.line(img, (x1, y1), (x2, y2), color, thickness)
+                    
+    if (extrapolate==True) & (rW > 0) & (lW > 0):
+        rA,rB = (rA,rB) / rW
+        lA,lB = (lA,lB) / lW
+        cv2.line(img, (0     , np.uint32(        lB)), (    lX, np.uint32(    lX*lA + lB)), color, thickness)
+        cv2.line(img, (rX    , np.uint32(rX*rA + rB)), (full_x, np.uint32(full_x*rA + rB)), color, thickness)
 
-def hough_lines(img, rho, theta, threshold, min_line_len, max_line_gap):
+def hough_lines(img, rho, theta, threshold, min_line_len, max_line_gap, extrapolate=True):
     """
     `img` should be the output of a Canny transform.
         
@@ -85,12 +123,21 @@ def hough_lines(img, rho, theta, threshold, min_line_len, max_line_gap):
     """
     lines = cv2.HoughLinesP(img, rho, theta, threshold, np.array([]), minLineLength=min_line_len, maxLineGap=max_line_gap)
     line_img = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
-    draw_lines(line_img, lines)
+    draw_lines(line_img, lines, thickness=5, extrapolate=extrapolate)
     return line_img
+
+def core_hough_lines(img, rho, theta, threshold, min_line_len, max_line_gap):
+    """
+    `img` should be the output of a Canny transform.
+        
+    Returns an image with hough lines drawn.
+    """
+    lines = cv2.HoughLinesP(img, rho, theta, threshold, np.array([]), minLineLength=min_line_len, maxLineGap=max_line_gap)
+    return lines
 
 # Python 3 has support for cool math symbols.
 
-def weighted_img(img, initial_img, α=0.8, β=1., γ=0.):
+def weighted_img(img, initial_img, α=0.8, β=1., λ=0.):
     """
     `img` is the output of the hough_lines(), An image with lines drawn on it.
     Should be a blank image (all black) with lines drawn on it.
@@ -99,7 +146,7 @@ def weighted_img(img, initial_img, α=0.8, β=1., γ=0.):
     
     The result image is computed as follows:
     
-    initial_img * α + img * β + γ
+    initial_img * α + img * β + λ
     NOTE: initial_img and img must be the same shape!
     """
-    return cv2.addWeighted(initial_img, α, img, β, γ)
+    return cv2.addWeighted(initial_img, α, img, β, λ)
