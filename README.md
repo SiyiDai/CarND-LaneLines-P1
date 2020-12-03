@@ -15,42 +15,189 @@ To complete the project, two files will be submitted: a file containing project 
 To meet specifications in the project, take a look at the requirements in the [project rubric](https://review.udacity.com/#!/rubrics/322/view)
 
 
-Creating a Great Writeup
----
-For this project, a great writeup should provide a detailed response to the "Reflection" section of the [project rubric](https://review.udacity.com/#!/rubrics/322/view). There are three parts to the reflection:
+# Detecting Lane Lines in Python with OpenCV
+As follow is a [lane detection tool](), the first project of the [Self Driving Car Nano Degree](https://www.udacity.com/drive) program from Udacity.
+The goal of this project is to detect lane lines in images and video footages taken from an overhead camera on the car while driving.
 
-1. Describe the pipeline
+[//]: # (Image References)
+[whole pipeline]: ./writeup/pipeline.png
+[gray]: ./writeup/grayscale.jpg 
+[region of interest]: ./writeup/edges_roi.jpg 
+[roi]: ./writeup/roi.png
+[blurred]: ./writeup/blurred.jpg
+[canny]: ./writeup/edges.jpg
+[all_lines]: ./writeup/lines.jpg
+[lines]: ./writeup/lines_extrapolate.jpg
+[final]: ./writeup/result.jpg
 
-2. Identify any shortcomings
+The result of this project is represented as below:
 
-3. Suggest possible improvements
+![Compare](./writeup/compare.gif)
 
-We encourage using images in your writeup to demonstrate how your pipeline works.  
+In this post, the logic behind the pipeline is illustrated by steps.
 
-All that said, please be concise!  We're not looking for you to write a book here: just a brief description.
+### Generating Candidate Lines and Excluding False-detections.
+The pipeline has two major phases: the first is prepping for and detecting potential lines in the image/video,
+and the second is heuristically removing lines that don't seem like sensible candidates to represent lanes.
 
-You're not required to use markdown for your writeup.  If you use another method please just submit a pdf of your writeup. Here is a link to a [writeup template file](https://github.com/udacity/CarND-LaneLines-P1/blob/master/writeup_template.md). 
+![whole pipeline]
+
+* [Generate Candidate Lines](#generate-candidate-lines)
+  * [Convert Image to Grayscale](#convert-image-to-grayscale)
+  * [Apply Gaussian Blur](#apply-gaussian-blut)
+  * [Apply the Canny Transform](#canny-transform)
+  * [Choose a Region of Interest](#choose-a-region-of-interest)
+  * [Detect Lines by Converting Image to Hough Space](#detect-lines)
+* [Heuristically Process Lines](#heuristically-process-lines)
+
+### Generate Candidate Lines
+
+#### 1. Convert Image to Grayscale
+In order to detect the brightness intensity contrast, the image should be converted into gray scales. 
+
+        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
 
-The Project
----
+![Look at all those gray scales][gray]
 
-## If you have already installed the [CarND Term1 Starter Kit](https://github.com/udacity/CarND-Term1-Starter-Kit/blob/master/README.md) you should be good to go!   If not, you should install the starter kit to get started on this project. ##
 
-**Step 1:** Set up the [CarND Term1 Starter Kit](https://github.com/udacity/CarND-Term1-Starter-Kit/blob/master/README.md) if you haven't already.
+#### 2. Apply Gaussian Blur
+By doing this, the noise in the image will be reduced. The kernel size for Gaussian smoothing should be any odd number. A larger kernel size implies averaging, or smoothing, over a larger area. Here the kernel size has been set to 5.
 
-**Step 2:** Open the code in a Jupyter Notebook
+    kernel_size = 5
+    blur_gray = cv2.GaussianBlur(gray, (kernel_size, kernel_size), 0)
+![Just a little blur][blurred]
 
-You will complete the project code in a Jupyter notebook.  If you are unfamiliar with Jupyter Notebooks, check out [Udacity's free course on Anaconda and Jupyter Notebooks](https://classroom.udacity.com/courses/ud1111) to get started.
+#### 3. Canny Transform
+The algorithm will first detect strong edge (strong gradient) pixels above the high_threshold, and reject pixels below the low_threshold. Next, pixels with values between the low_threshold and high_threshold will be included as long as they are connected to strong edges. The output edges is a binary image with white pixels tracing out the detected edges and black everywhere else.
 
-Jupyter is an Ipython notebook where you can run blocks of code and see results interactively.  All the code for this project is contained in a Jupyter notebook. To start Jupyter in your browser, use terminal to navigate to your project directory and then run the following command at the terminal prompt (be sure you've activated your Python 3 carnd-term1 environment as described in the [CarND Term1 Starter Kit](https://github.com/udacity/CarND-Term1-Starter-Kit/blob/master/README.md) installation instructions!):
+After Canny Transform, the blurred image has been converted into outlines.
 
-`> jupyter notebook`
+    low_threshold = 50
+    high_threshold = 150
+    edges = cv2.Canny(blur_gray, low_threshold, high_threshold)
 
-A browser window will appear showing the contents of the current directory.  Click on the file called "P1.ipynb".  Another browser window will appear displaying the notebook.  Follow the instructions in the notebook to complete the project.  
+![After we apply the canny transform][canny]
 
-**Step 3:** Complete the project and submit both the Ipython notebook and the project writeup
 
-## How to write a README
-A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
+#### 4. Choose a Region of Interest
+Since the front facing camera that took the image is mounted in a fixed position on the car, such that the lane lines will always appear in the same general region of the image. We'll take advantage of this by adding a criterion to only consider pixels in the region where we expect to find the lane lines.
 
+First, we specify a trapezoid from the two bottom corners to the two centers of the image by assign four vertices as follows.
+
+    roi_vertices = np.array([(x * image.shape[1],y * image.shape[0]) for (x,y) in \
+        [[0.0,1], [0.45, 0.6], [0.55, 0.6], [1, 1]]], np.int32)
+
+![This is all we're interested in][roi]
+
+Masking the canny image for a certain region looks like this:
+
+    mask = np.zeros_like(edges)   
+    if len(edges.shape) > 2:
+        channel_count = edges.shape[2]  # i.e. 3 or 4 depending on your image
+        ignore_mask_color = (255,) * channel_count
+    else:
+        ignore_mask_color = 255
+        
+    cv2.fillPoly(mask, [roi_vertices], ignore_mask_color)
+    edges_roi = cv2.bitwise_and(edges, mask)
+
+
+![This is all we're interested in][region of interest]
+#### 5. Detect Lines
+We used the Hough Transform to find lines from canny edges:
+    
+    rho = 1
+    theta = 1 * np.pi/180
+    threshold = 5
+    min_line_len = 2
+    max_line_gap = 20
+
+    lines = cv2.HoughLinesP(edges_roi, rho, theta, threshold, np.array([]), minLineLength=min_line_len, maxLineGap=max_line_gap)
+
+    line_img = np.zeros((edges_roi.shape[0], edges_roi.shape[1], 3), dtype=np.uint8)
+
+    for line in lines:
+        cv2.line(line_img, (line.x1, line.y1), (line.x2, line.y2), color=[255, 0, 0], thickness=5)
+
+![All the lines][all_lines]
+
+#### Heuristically Process Lines (`reduce_to_lanes`)
+So far the candidate lines from the image have been detected as below, however not all of them should be considered as the lane lines. 
+
+In order to draw a single line on the left and right lanes, I modified the draw_lines() function by:
+  * Separate line segments by their slope to decide which segments are part of the left line vs. the right line.
+
+
+        def line_angle_checked(img, x1, y1, x2, y2):
+            # check the line slope is in the range of 25-40 degree
+            min_angle = 25
+            max_angle = 40
+
+            x_mid = np.uint32(img.shape[1] * 0.5)
+
+            min_angle_tan = np.tan(min_angle*np.pi/180)
+            max_angle_tan = np.tan(max_angle*np.pi/180)
+            slope = (y2-y1)/(x2-x1)
+
+            if x1 >= x_mid and x2 >= x_mid:
+                if slope > min_angle_tan and slope < max_angle_tan: 
+                    return True
+            else:
+                if slope < -min_angle_tan and slope > -max_angle_tan:
+                    return True
+
+  * Average the position of each of the lines
+  * Extrapolate to the top and bottom of the lane.
+
+        if x1 >= x_mid and x2 >= x_mid:
+            W = np.linalg.norm(np.array((x2,y2))-np.array((x1,y1)))
+            fitW = np.polyfit((x1,x2), (y1,y2), 1) * W
+            rA,rB = (rA,rB) + fitW
+            rW = rW + W
+            rX_max = min(rX_max,x1,x2)
+        else:
+            W = np.linalg.norm(np.array((x2,y2))-np.array((x1,y1)))
+            fitW = np.polyfit((x1,x2), (y1,y2), 1) * W
+            lA,lB = (lA,lB) + fitW
+            lW = lW + W
+            lX_max = max(lX_max, x1, x2)
+
+        if rW != 0 and lW != 0:
+            rA,rB = (rA,rB) / rW
+            lA,lB = (lA,lB) / lW
+
+            # left line left vertice
+            l_x1, l_y1 = (0, int(lB))
+            # left line right vertice
+            l_x2, l_y2 = (int(lX_max), int(lX_max*lA + lB))
+
+            # right line left vertice
+            r_x1, r_y1 = (int(rX_max), int(rX_max*rA + rB))
+            # right line right vertice
+            r_x2, r_y2 = (int(full_x), int(full_x*rA + rB))
+            
+            cv2.line(img, (l_x1, l_y1), (l_x2,l_y2), color, thickness)
+            cv2.line(img, (r_x1, r_y1), (r_x2,r_y2), color, thickness)
+![Final Result Lines][lines]
+
+Now we can make an image to represent our lines and glue it to our copy of the original image:
+
+
+    result = cv2.addWeighted(image, α, lines_extrapolate, β, λ)
+
+
+![final][final]
+
+#### Shortcomings
+
+Potential shortcomings would be what would happen when
+* The lane lines on the road are more than short
+* Overexposed image 
+* The car has drifted out of the lane lines
+
+
+#### Possible Improvements
+
+* Try curve detection with polynomial fit
+* Improve parameter tuning for region of interest regarding situation when the car has drifted out of the lane lines.
